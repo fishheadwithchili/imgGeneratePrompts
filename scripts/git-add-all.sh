@@ -31,11 +31,21 @@ git add scripts/
 git add *.sh
 git add Makefile
 
-echo "正在添加示例配置..."
-git add production.env.example
+echo "正在添加示例配置文件..."
+git add apikey/database.env.example
+git add apikey/production.env.example
+git add apikey/README.md
 
 echo "正在添加上传目录结构..."
 git add uploads/.gitkeep
+
+echo "正在添加新的项目文件..."
+git add docker-compose.override.yml.template
+git add scripts/init-project.sh
+git add scripts/quick-setup.sh
+git add scripts/git-reset.sh
+git add PROJECT-FILES.md
+git add STRUCTURE-IMPROVEMENT.md
 
 echo
 echo "===================================="
