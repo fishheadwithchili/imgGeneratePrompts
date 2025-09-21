@@ -109,9 +109,9 @@ cd /opt/img-prompts
 # 2. 构建应用
 make build
 
-# 3. 复制配置文件
-cp production.env.example apikey/production.env
-# 编辑 apikey/production.env 文件
+# 3. 创建数据库配置文件
+cp apikey/database.env.example apikey/database.env
+# 编辑 apikey/database.env 文件，设置数据库连接信息
 
 # 4. 创建系统用户
 sudo useradd -r -s /bin/false imgprompts
@@ -149,9 +149,6 @@ RestartSec=5
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=img-prompts
-
-# 环境变量
-Environment=GIN_MODE=release
 
 # 安全配置
 NoNewPrivileges=true
