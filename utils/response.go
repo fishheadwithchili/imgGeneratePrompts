@@ -2,6 +2,7 @@ package utils
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -90,7 +91,21 @@ func PaginationResponse(c *gin.Context, items interface{}, page, pageSize int, t
 
 // ValidationErrorResponse 参数验证错误响应
 func ValidationErrorResponse(c *gin.Context, err error) {
-	BadRequestResponse(c, "参数验证失败: "+err.Error())
+	if err == nil {
+		BadRequestResponse(c, "参数验证失败")
+		return
+	}
+
+	// 检查是否是JSON解析错误
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "'str' object has no attribute") ||
+		strings.Contains(errMsg, "json: cannot unmarshal") ||
+		strings.Contains(errMsg, "invalid character") {
+		BadRequestResponse(c, "请求数据格式错误，请检查是否为JSON格式: "+errMsg)
+		return
+	}
+
+	BadRequestResponse(c, "参数验证失败: "+errMsg)
 }
 
 // BindJSONError 绑定JSON错误处理

@@ -27,6 +27,7 @@ func SetupRoutes() *gin.Engine {
 			// 基础CRUD操作
 			prompts.POST("/", promptController.CreatePrompt)                  // 创建提示词
 			prompts.POST("/upload", promptController.UploadAndCreatePrompt)   // 上传图片并创建提示词
+			prompts.POST("/analyze", promptController.AnalyzePrompt)          // 智能生成：AI分析图片和提示词
 			prompts.GET("/", promptController.GetPrompts)                     // 获取提示词列表
 			prompts.GET("/public", promptController.GetPublicPrompts)         // 获取公开提示词列表
 			prompts.GET("/recent", promptController.GetRecentPrompts)         // 获取最近的提示词

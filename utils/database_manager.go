@@ -24,7 +24,7 @@ func (dm *DatabaseManager) InitializeDatabase() error {
 		return fmt.Errorf("创建数据库失败: %v", err)
 	}
 
-	// 2. 初始化数据库连接
+	// 2. 初始化数据库连接并迁移表结构
 	if err := config.InitDB(); err != nil {
 		return fmt.Errorf("初始化数据库连接失败: %v", err)
 	}
@@ -33,7 +33,7 @@ func (dm *DatabaseManager) InitializeDatabase() error {
 	return nil
 }
 
-// CreateSampleData 创建示例数据
+// CreateSampleData 创建示例数据 (已优化)
 func (dm *DatabaseManager) CreateSampleData() error {
 	log.Println("开始创建示例数据...")
 
@@ -48,89 +48,83 @@ func (dm *DatabaseManager) CreateSampleData() error {
 	}
 
 	// 创建示例标签
-	sampleTags := []models.Tag{
-		{Name: "风景"},
-		{Name: "人物"},
-		{Name: "动物"},
-		{Name: "科幻"},
-		{Name: "复古"},
-		{Name: "现代"},
-		{Name: "暖色调"},
-		{Name: "冷色调"},
-		{Name: "高质量"},
-		{Name: "4K"},
+	sampleTagNames := []string{
+		"风景", "人物", "动物", "科幻", "复古",
+		"现代", "暖色调", "冷色调", "高质量", "4K",
 	}
 
-	var createdTags []*models.Tag
-	for _, tag := range sampleTags {
+	// 使用 map 来存储创建的标签，便于通过名字查找
+	createdTagsMap := make(map[string]*models.Tag)
+	for _, name := range sampleTagNames {
+		tag := models.Tag{Name: name}
 		if err := db.Create(&tag).Error; err != nil {
-			log.Printf("创建标签 %s 失败: %v", tag.Name, err)
+			log.Printf("创建标签 %s 失败: %v", name, err)
 			continue
 		}
-		createdTags = append(createdTags, &tag)
+		createdTagsMap[name] = &tag
 	}
 
 	// 创建示例提示词
 	samplePrompts := []struct {
-		Prompt     models.Prompt
-		TagIndexes []int // 对应createdTags的索引
+		Prompt   models.Prompt
+		TagNames []string // ✨ 优化点：使用标签名而不是下标
 	}{
 		{
 			Prompt: models.Prompt{
 				PromptText:            "a beautiful sunset over mountains, golden hour, cinematic lighting, high quality",
 				NegativePrompt:        "ugly, blurry, low quality, pixelated, noise",
 				ModelName:             "stable-diffusion-v1-5",
-				ImageURL:              "/uploads/sample_sunset.jpg",
+				OutputImageURL:        "/uploads/sample_sunset.jpg",
 				IsPublic:              true,
 				StyleDescription:      "风景摄影风格，温暖的金色调",
 				UsageScenario:         "适用于自然风光、旅游宣传、背景图片",
 				AtmosphereDescription: "宁静、温暖、壮观的黄昏氛围",
 				ExpressiveIntent:      "表现大自然的壮美和宁静",
-				StructureAnalysis:     `{"主体":"山峰日落","光照":"黄金时刻","质量":"高质量","风格":"电影感"}`,
+				StructureAnalysis:     []byte(`{"主体":"山峰日落","光照":"黄金时刻","质量":"高质量","风格":"电影感"}`),
 			},
-			TagIndexes: []int{0, 6, 8, 9}, // 风景, 暖色调, 高质量, 4K
+			TagNames: []string{"风景", "暖色调", "高质量", "4K"},
 		},
 		{
 			Prompt: models.Prompt{
 				PromptText:            "portrait of a cat, professional photography, studio lighting, detailed fur texture",
 				NegativePrompt:        "cartoon, anime, low resolution, distorted",
 				ModelName:             "stable-diffusion-v1-5",
-				ImageURL:              "/uploads/sample_cat.jpg",
+				OutputImageURL:        "/uploads/sample_cat.jpg",
 				IsPublic:              true,
 				StyleDescription:      "专业摄影风格，细致的毛发质感",
 				UsageScenario:         "适用于宠物摄影、动物主题设计",
 				AtmosphereDescription: "温馨、可爱、专业的摄影氛围",
 				ExpressiveIntent:      "突出动物的可爱特征和毛发细节",
-				StructureAnalysis:     `{"主体":"猫咪肖像","技法":"专业摄影","光照":"工作室灯光","细节":"毛发质感"}`,
+				StructureAnalysis:     []byte(`{"主体":"猫咪肖像","技法":"专业摄影","光照":"工作室灯光","细节":"毛发质感"}`),
 			},
-			TagIndexes: []int{1, 2, 5, 8}, // 人物(这里用来表示动物肖像), 动物, 现代, 高质量
+			TagNames: []string{"动物", "现代", "高质量"},
 		},
 		{
 			Prompt: models.Prompt{
 				PromptText:            "futuristic city skyline, neon lights, cyberpunk style, night scene, high-tech architecture",
 				NegativePrompt:        "old, vintage, daylight, low quality",
 				ModelName:             "stable-diffusion-xl",
-				ImageURL:              "/uploads/sample_cyberpunk.jpg",
+				OutputImageURL:        "/uploads/sample_cyberpunk.jpg",
 				IsPublic:              true,
 				StyleDescription:      "赛博朋克风格，霓虹灯光效果",
 				UsageScenario:         "适用于科幻题材、游戏背景、未来主题设计",
 				AtmosphereDescription: "神秘、科技感十足的未来夜景",
 				ExpressiveIntent:      "展现未来科技城市的繁华与神秘",
-				StructureAnalysis:     `{"主体":"未来城市","风格":"赛博朋克","光效":"霓虹灯","时间":"夜景"}`,
+				StructureAnalysis:     []byte(`{"主体":"未来城市","风格":"赛博朋克","光效":"霓虹灯","时间":"夜景"}`),
 			},
-			TagIndexes: []int{3, 5, 7, 8}, // 科幻, 现代, 冷色调, 高质量
+			TagNames: []string{"科幻", "现代", "冷色调", "高质量"},
 		},
 	}
 
 	for i, sample := range samplePrompts {
-		// 添加对应的标签
-		var tags []*models.Tag
-		for _, idx := range sample.TagIndexes {
-			if idx < len(createdTags) {
-				tags = append(tags, createdTags[idx])
+		// ✨ 优化点：通过名字从 map 中查找并关联标签
+		var tagsToAssociate []*models.Tag
+		for _, tagName := range sample.TagNames {
+			if tag, ok := createdTagsMap[tagName]; ok {
+				tagsToAssociate = append(tagsToAssociate, tag)
 			}
 		}
-		sample.Prompt.Tags = tags
+		sample.Prompt.Tags = tagsToAssociate
 
 		if err := db.Create(&sample.Prompt).Error; err != nil {
 			log.Printf("创建示例提示词 %d 失败: %v", i+1, err)

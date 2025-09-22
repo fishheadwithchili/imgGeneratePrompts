@@ -151,24 +151,34 @@ func (s *TagService) GetTagStats() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("获取标签总数失败: %v", err)
 	}
 
-	// 获取最受欢迎的标签（被使用次数最多）
+	// 定义一个临时的内部结构体来接收查询结果
 	type TagUsage struct {
-		TagID    uint   `json:"tag_id"`
-		TagName  string `json:"tag_name"`
-		UseCount int64  `json:"use_count"`
+		TagID    uint
+		TagName  string
+		UseCount int64
 	}
 
-	var popularTags []TagUsage
+	var popularTagsStructs []TagUsage
 	err := s.db.Table("prompt_tags").
 		Select("tag_id, tags.name as tag_name, COUNT(*) as use_count").
 		Joins("LEFT JOIN tags ON tags.id = prompt_tags.tag_id").
-		Group("tag_id").
+		Group("tag_id, tags.name").
 		Order("use_count DESC").
 		Limit(10).
-		Scan(&popularTags).Error
+		Scan(&popularTagsStructs).Error
 
 	if err != nil {
 		return nil, fmt.Errorf("获取热门标签失败: %v", err)
+	}
+
+	// 将结果转换为 []map[string]interface{}，这是更通用的返回类型
+	popularTags := make([]map[string]interface{}, len(popularTagsStructs))
+	for i, item := range popularTagsStructs {
+		popularTags[i] = map[string]interface{}{
+			"tag_id":    item.TagID,
+			"tag_name":  item.TagName,
+			"use_count": item.UseCount,
+		}
 	}
 
 	return map[string]interface{}{

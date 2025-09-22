@@ -54,11 +54,28 @@ func LoadConfig() error {
 	return nil
 }
 
-// loadDatabaseConfig 从apikey目录加载数据库配置
+// loadDatabaseConfig 从apikey目录加载数据库配置 (已优化)
 func loadDatabaseConfig() (*DatabaseConfig, error) {
-	file, err := os.Open("./apikey/database.env")
+	// 定义可能的配置文件路径
+	// 第一个是为 main.go 在根目录运行准备的
+	// 第二个是为子目录中的测试 (如 utils/) 准备的
+	possiblePaths := []string{
+		"./apikey/database.env",
+		"../apikey/database.env",
+	}
+
+	var file *os.File
+	var err error
+
+	for _, path := range possiblePaths {
+		file, err = os.Open(path)
+		if err == nil {
+			break // 找到文件，跳出循环
+		}
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("无法打开数据库配置文件: %v", err)
+		return nil, fmt.Errorf("无法在任何预设路径中找到数据库配置文件: %v", err)
 	}
 	defer file.Close()
 

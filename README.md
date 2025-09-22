@@ -1,400 +1,385 @@
-# Image Generate Prompts API v2.0
+# 图像生成提示词管理系统后端 V3.1
 
-基于Go语言的AI图片生成提示词管理系统，采用优雅的MVC架构和多对多标签系统。
+这是一个用于管理AI图像生成提示词的后端API系统，基于Golang、Gin框架和GORM ORM。
 
-## ⚡ 快速开始（首次运行必读）
+## 🆕 V3.1 更新
 
-### 🎯 一键设置（推荐）
+### 1. 数据库字段优化
+- **输入图片字段**：`input_image_url` 替代原有的 `reference_images`，存储格式优化为逗号分隔的字符串
+- **输出图片字段**：`output_image_url` 替代原有的 `output_image`
+- **存储格式**：多个图片URL以逗号分隔存储，如：`/uploads/180151.jpg,/uploads/180150.jpg`
+- **向后兼容**：API响应仍返回数组格式，确保前端兼容性
 
-```bash
-# 克隆项目后，运行一键初始化
-chmod +x scripts/*.sh
-./scripts/init-project.sh
+### 2. 字段映射关系
+- 数据库：`input_image_url`（varchar 500，逗号分隔）→ API：`input_image_urls`（数组）
+- 数据库：`output_image_url`（varchar 500）→ API：`output_image_url`（字符串）
 
-# 或者完全自动化设置
-./scripts/quick-setup.sh
-```
+## 主要特性
 
-### 🔧 手动设置
+- 🎨 **提示词管理**：完整的CRUD操作，支持创建、查看、更新和删除提示词
+- 🏷️ **标签系统**：灵活的标签管理，支持多对多关联
+- 📸 **多图片上传**：支持参考图和输出图的分别上传
+- 🤖 **AI智能生成**：基于图片和基础提示词自动生成完整描述
+- 🔍 **高级搜索**：支持关键词、模型、标签等多维度搜索
+- 📊 **统计分析**：提供提示词和标签的统计信息
+- ✅ **重复检测**：自动检测重复的提示词内容
 
-如果您喜欢手动配置，请按以下步骤：
+## 技术栈
 
-#### 1. 创建配置文件
+- **语言**: Go 1.19+
+- **Web框架**: Gin
+- **ORM**: GORM
+- **数据库**: MySQL 5.7+
+- **API格式**: RESTful JSON
 
-项目需要以下配置文件（这些文件因安全原因被 .gitignore 忽略）：
-
-```bash
-# 创建数据库配置
-cp apikey/database.env.example apikey/database.env
-
-# 创建 Docker 配置（可选）
-cp docker-compose.yml.template docker-compose.override.yml
-```
-
-#### 2. 编辑数据库配置
-
-编辑 `apikey/database.env`：
-
-```env
-DB_HOST=localhost
-DB_PORT=3307
-DB_USER=root
-DB_PASSWORD=你的密码
-DB_NAME=img_generate_prompts
-DB_CHARSET=utf8mb4
-```
-
-#### 3. 启动数据库
-
-```bash
-# 使用 Docker（推荐）
-docker-compose up mysql -d
-
-# 或者使用本地 MySQL
-# 确保 MySQL 在 3306 端口运行，并修改配置文件中的端口
-```
-
-#### 4. 初始化项目
-
-```bash
-# 下载依赖
-go mod download
-
-# 执行数据库迁移
-./scripts/dev.sh migrate
-# 或者
-go run main.go -migrate
-
-# 启动服务
-./scripts/dev.sh start
-# 或者
-go run main.go
-```
-
-### 🚨 常见问题
-
-**Q: 运行时提示 "无法打开数据库配置文件"？**
-A: 请确保已创建 `apikey/database.env` 文件，参考上面的步骤1。
-
-**Q: Docker 容器启动失败？**
-A: 请确保已创建 `docker-compose.override.yml` 文件，或使用我们提供的初始化脚本。
-
-**Q: 数据库连接失败？**
-A: 请检查 `apikey/database.env` 中的数据库配置，确保密码和端口正确。
-
----
-
-## 📖 详细文档
-
-## 🆕 v2.0 更新内容
-
-- ✅ **简化数据结构**：移除用户系统，专注核心功能
-- ✅ **多对多标签系统**：独立的标签表和中间表
-- ✅ **丰富描述字段**：新增风格、场景、氛围、意图等描述
-- ✅ **数据库管理工具**：命令行工具管理数据库
-- ✅ **完善的API接口**：标签管理、搜索、统计等功能
-
-## 📁 项目结构
+## 项目结构
 
 ```
 imgGeneratePrompts/
-├── 📂 apikey/                 # 敏感配置（已gitignore）
-│   └── database.env          # 数据库配置文件
-├── 📂 cmd/                   # 命令行工具
-│   └── db-manager.go         # 数据库管理工具
-├── 📂 config/                # 配置管理
-│   ├── config.go            # 应用配置
-│   └── database.go          # 数据库连接和迁移
-├── 📂 controllers/           # 控制器层（MVC-C）
+├── config/               # 配置管理
+│   ├── config.go        # 应用配置
+│   └── database.go      # 数据库配置
+├── controllers/         # 控制器层
 │   ├── prompt_controller.go  # 提示词控制器
 │   └── tag_controller.go     # 标签控制器
-├── 📂 models/               # 模型层（MVC-M）
-│   └── prompt.go            # 数据模型定义
-├── 📂 services/             # 服务层（业务逻辑）
-│   ├── prompt_service.go    # 提示词服务
-│   └── tag_service.go       # 标签服务
-├── 📂 routes/               # 路由配置
-│   └── routes.go
-├── 📂 utils/                # 工具类
-│   ├── database_manager.go  # 数据库管理工具
-│   ├── file_utils.go        # 文件处理工具
-│   └── response.go          # 响应格式化工具
-├── 📂 uploads/              # 文件上传目录
-├── 📄 main.go               # 应用入口
-├── 📄 go.mod                # Go模块配置
-└── 📄 README.md             # 项目文档
+├── models/              # 数据模型
+│   └── prompt.go        # 提示词和标签模型
+├── services/            # 业务逻辑层
+│   ├── prompt_service.go     # 提示词服务
+│   └── tag_service.go        # 标签服务
+├── routes/              # 路由定义
+│   └── routes.go        # API路由配置
+├── utils/               # 工具函数
+│   ├── file_utils.go    # 文件处理
+│   └── response.go      # 响应格式化
+├── scripts/             # 脚本文件
+│   ├── init.sql         # 数据库初始化
+│   └── migrate_v3.sql   # V3.0数据库迁移
+└── uploads/             # 图片上传目录
 ```
 
-## 🗄️ 数据库设计
+## 数据库设计
 
-### 1. prompts 表（主表）
-
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| id | BIGINT | 主键，自增 |
-| created_at | DATETIME | 创建时间 |
-| updated_at | DATETIME | 更新时间 |
-| deleted_at | DATETIME | 软删除时间 |
-| prompt_text | TEXT | 正面提示词 |
-| negative_prompt | TEXT | 负面提示词 |
-| model_name | VARCHAR(100) | AI模型名称 |
-| image_url | VARCHAR(500) | 图片URL |
-| is_public | TINYINT(1) | 是否公开 |
-| **style_description** | VARCHAR(500) | **风格描述** |
-| **usage_scenario** | VARCHAR(500) | **适用场景描述** |
-| **atmosphere_description** | VARCHAR(500) | **氛围描述** |
-| **expressive_intent** | VARCHAR(500) | **表现意图描述** |
-| **structure_analysis** | JSON | **提示词结构分析** |
-
-### 2. tags 表（标签表）
-
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| id | BIGINT | 主键，自增 |
-| name | VARCHAR(100) | 标签名称（唯一） |
-| created_at | DATETIME | 创建时间 |
-
-### 3. prompt_tags 表（中间表）
-
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| prompt_id | BIGINT | 提示词ID |
-| tag_id | BIGINT | 标签ID |
-
-## 🚀 快速开始
-
-### 1. 环境准备
-
-```bash
-# 确保MySQL运行在3307端口
-# 创建数据库
-mysql -u root -p12345678 -P 3307 -e "CREATE DATABASE img_generate_prompts;"
+### prompts表（V3.1更新）
+```sql
+- id                     # 主键
+- created_at            # 创建时间
+- updated_at            # 更新时间
+- deleted_at            # 软删除时间
+- prompt_text           # 正面提示词
+- negative_prompt       # 负面提示词
+- model_name           # 模型名称
+- input_image_url      # 输入参照图片URL（逗号分隔）
+- output_image_url     # 输出参照图片URL
+- is_public            # 是否公开
+- style_description    # 风格描述
+- usage_scenario       # 使用场景
+- atmosphere_description # 氛围描述
+- expressive_intent    # 表现意图
+- structure_analysis   # 结构分析（JSON）
 ```
 
-### 2. 克隆和安装
-
-```bash
-cd D:\projects\GolandProjects\imgGeneratePrompts
-go mod download
+### tags表
+```sql
+- id         # 主键
+- name       # 标签名称
+- created_at # 创建时间
 ```
 
-### 3. 数据库初始化 ⭐
-
-使用我们提供的数据库管理工具：
-
-```bash
-# 方法1：完整初始化（推荐）
-go run cmd/db-manager.go -write
-
-# 方法2：分步骤初始化
-go run cmd/db-manager.go -init      # 初始化表结构
-go run cmd/db-manager.go -sample    # 创建示例数据
-
-# 其他管理命令
-go run cmd/db-manager.go -stats     # 查看统计信息
-go run cmd/db-manager.go -validate  # 验证数据完整性
-go run cmd/db-manager.go -reset     # 重置数据库（危险）
+### prompt_tags表（关联表）
+```sql
+- prompt_id  # 提示词ID
+- tag_id     # 标签ID
 ```
 
-### 4. 启动服务
-
-```bash
-go run main.go
-```
-
-服务器将在 `http://localhost:8080` 启动！
-
-## 🔧 数据库管理工具
-
-我们提供了强大的命令行数据库管理工具：
-
-```bash
-# 🛠️  数据库管理工具
-# 
-# 用法:
-#   go run cmd/db-manager.go [选项]
-# 
-# 选项:
-#   -write     完整写入数据库（推荐：初始化+示例数据）
-#   -init      初始化数据库（创建表结构）
-#   -sample    创建示例数据
-#   -reset     重置数据库（危险操作）
-#   -stats     显示数据库统计信息
-#   -validate  验证数据完整性
-# 
-# 示例:
-#   go run cmd/db-manager.go -write    # 完整初始化数据库
-#   go run cmd/db-manager.go -stats    # 查看统计信息
-#   go run cmd/db-manager.go -sample   # 只创建示例数据
-```
-
-## 📡 API 接口
-
-### 基础信息
-
-- **基础URL**: `http://localhost:8080/api/v1`
-- **响应格式**: JSON
+## API接口详情
 
 ### 提示词接口
 
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| POST | `/prompts` | 创建提示词 |
-| POST | `/prompts/upload` | 上传图片并创建提示词 |
-| GET | `/prompts` | 获取提示词列表（支持搜索和过滤） |
-| GET | `/prompts/public` | 获取公开提示词列表 |
-| GET | `/prompts/recent` | 获取最近的提示词 |
-| GET | `/prompts/stats` | 获取提示词统计信息 |
-| GET | `/prompts/search/tags` | 根据标签搜索提示词 |
-| GET | `/prompts/check-duplicate` | 检查重复提示词 |
-| GET | `/prompts/:id` | 获取单个提示词 |
-| PUT | `/prompts/:id` | 更新提示词 |
-| DELETE | `/prompts/:id` | 删除提示词 |
+#### 创建提示词
+```http
+POST /api/v1/prompts/
+Content-Type: application/json
 
-### 标签接口 🆕
-
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| POST | `/tags` | 创建标签 |
-| GET | `/tags` | 获取所有标签 |
-| GET | `/tags/search` | 搜索标签 |
-| GET | `/tags/stats` | 获取标签统计信息 |
-| GET | `/tags/:id` | 获取单个标签 |
-| DELETE | `/tags/:id` | 删除标签 |
-
-### 创建提示词示例
-
-```json
-POST /api/v1/prompts
 {
-  "prompt_text": "a beautiful sunset over mountains, golden hour, cinematic lighting",
-  "negative_prompt": "ugly, blurry, low quality",
-  "model_name": "stable-diffusion-v1-5",
+  "prompt_text": "提示词内容",
+  "negative_prompt": "负面提示词",
+  "model_name": "模型名称",
+  "input_image_urls": ["/uploads/image1.jpg", "/uploads/image2.jpg"],
+  "output_image_url": "/uploads/output.jpg",
   "is_public": true,
-  "style_description": "风景摄影风格，温暖的金色调",
-  "usage_scenario": "适用于自然风光、旅游宣传、背景图片",
-  "atmosphere_description": "宁静、温暖、壮观的黄昏氛围",
-  "expressive_intent": "表现大自然的壮美和宁静",
-  "structure_analysis": "{\"主体\":\"山峰日落\",\"光照\":\"黄金时刻\"}",
-  "tag_names": ["风景", "暖色调", "高质量"]
+  "style_description": "风格描述",
+  "usage_scenario": "使用场景",
+  "atmosphere_description": "氛围描述",
+  "expressive_intent": "表现意图",
+  "structure_analysis": "{\"主体\":\"描述\"}",
+  "tag_names": ["标签1", "标签2"]
 }
 ```
 
-### 查询参数示例
+#### 上传图片并创建提示词
+```http
+POST /api/v1/prompts/upload
+Content-Type: multipart/form-data
 
-```bash
-# 按标签搜索
-GET /api/v1/prompts?tag_names=风景,高质量&page=1&page_size=10
-
-# 关键词搜索
-GET /api/v1/prompts?keyword=sunset&sort_by=created_at&sort_order=desc
-
-# 获取公开提示词
-GET /api/v1/prompts/public?page=1&page_size=20
+- input_images: 输入参考图片文件（支持多个）
+- output_image: 输出图片文件（单个）
+- prompt_text: 提示词内容
+- negative_prompt: 负面提示词
+- model_name: 模型名称
+- is_public: 是否公开
+- style_description: 风格描述
+- usage_scenario: 使用场景
+- atmosphere_description: 氛围描述
+- expressive_intent: 表现意图
+- structure_analysis: 结构分析
+- tag_names: 标签名称（逗号分隔）
 ```
 
-## ✨ 新功能特性
+#### AI智能分析
+```http
+POST /api/v1/prompts/analyze
+Content-Type: multipart/form-data
 
-### 🏷️ 多对多标签系统
-- 独立的标签管理
-- 标签统计和热门排行
-- 支持标签搜索和过滤
+- output_image: 输出图片文件（必需）
+- input_images: 输入参考图片文件（可选，支持多个）
+- prompt_text: 基础提示词
+- model_name: 模型名称
+```
 
-### 📝 丰富的描述字段
-- **风格描述**: 描述图片的艺术风格
-- **适用场景**: 说明使用场景和用途
-- **氛围描述**: 表达图片营造的氛围
-- **表现意图**: 阐述创作意图
-- **结构分析**: JSON格式的提示词结构分析
+#### 响应格式示例
+```json
+{
+  "success": true,
+  "message": "操作成功",
+  "data": {
+    "id": 1,
+    "created_at": "2024-01-01T00:00:00Z",
+    "prompt_text": "提示词内容",
+    "negative_prompt": "负面提示词",
+    "model_name": "模型名称",
+    "input_image_urls": ["/uploads/image1.jpg", "/uploads/image2.jpg"],
+    "output_image_url": "/uploads/output.jpg",
+    "is_public": true,
+    "style_description": "风格描述",
+    "usage_scenario": "使用场景",
+    "atmosphere_description": "氛围描述",
+    "expressive_intent": "表现意图",
+    "structure_analysis": "{\"主体\":\"描述\"}",
+    "tags": [
+      {"id": 1, "name": "标签1", "created_at": "2024-01-01T00:00:00Z"},
+      {"id": 2, "name": "标签2", "created_at": "2024-01-01T00:00:00Z"}
+    ]
+  }
+}
+```
 
-### 🔍 强大的搜索功能
-- 关键词搜索（支持多字段）
-- 标签过滤
-- 模型名称过滤
-- 公开/私有过滤
+### 完整API接口列表
 
-### 📊 统计功能
-- 提示词统计（总数、公开、私有、最近）
-- 标签使用统计
-- 模型使用统计
-- 热门标签排行
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| POST | /api/v1/prompts/ | 创建提示词 |
+| POST | /api/v1/prompts/upload | 上传图片并创建提示词 |
+| POST | /api/v1/prompts/analyze | AI智能分析 |
+| GET | /api/v1/prompts/ | 获取提示词列表 |
+| GET | /api/v1/prompts/:id | 获取单个提示词 |
+| PUT | /api/v1/prompts/:id | 更新提示词 |
+| DELETE | /api/v1/prompts/:id | 删除提示词 |
+| GET | /api/v1/prompts/public | 获取公开提示词 |
+| GET | /api/v1/prompts/recent | 获取最近提示词 |
+| GET | /api/v1/prompts/stats | 获取统计信息 |
+| GET | /api/v1/prompts/search/tags | 按标签搜索 |
+| GET | /api/v1/prompts/check-duplicate | 检查重复 |
 
-## 🛠️ 开发指南
+### 标签接口
 
-### 数据库操作流程
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| POST | /api/v1/tags/ | 创建标签 |
+| GET | /api/v1/tags/ | 获取所有标签 |
+| GET | /api/v1/tags/:id | 获取单个标签 |
+| DELETE | /api/v1/tags/:id | 删除标签 |
+| GET | /api/v1/tags/search | 搜索标签 |
+| GET | /api/v1/tags/stats | 获取标签统计 |
 
-1. **初始化**: `go run cmd/db-manager.go -write`
-2. **开发**: 修改模型后重新迁移
-3. **测试**: 使用示例数据测试功能
-4. **部署**: 生产环境只运行 `-init`
+### 系统接口
 
-### 添加新字段
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | /health | 健康检查 |
+| GET | /db-status | 数据库状态检查 |
+| GET | / | API信息 |
 
-1. 在 `models/prompt.go` 中添加字段
-2. 运行 `go run cmd/db-manager.go -init` 迁移
-3. 更新对应的服务和控制器
+## 快速开始
 
-### 自定义配置
+### 1. 环境准备
 
-修改 `apikey/database.env` 文件：
+确保已安装：
+- Go 1.19+
+- MySQL 5.7+
 
+### 2. 克隆项目
+
+```bash
+git clone <repository-url>
+cd imgGeneratePrompts
+```
+
+### 3. 配置数据库
+
+创建数据库配置文件：
+```bash
+cp apikey/database.env.example apikey/database.env
+```
+
+编辑 `apikey/database.env` 文件，配置数据库连接信息：
 ```env
 DB_HOST=localhost
-DB_PORT=3307
-DB_USER=root
-DB_PASSWORD=12345678
-DB_NAME=img_generate_prompts
-DB_CHARSET=utf8mb4
+DB_PORT=3306
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=img_prompts
 ```
 
-## 🧪 测试示例
+### 4. 初始化数据库
+
+执行数据库初始化脚本：
+```bash
+mysql -u your_username -p < scripts/init.sql
+```
+
+### 5. 安装依赖
 
 ```bash
-# 1. 初始化数据库
-go run cmd/db-manager.go -write
-
-# 2. 启动服务
-go run main.go
-
-# 3. 测试健康检查
-curl http://localhost:8080/health
-
-# 4. 获取所有标签
-curl http://localhost:8080/api/v1/tags
-
-# 5. 获取提示词列表
-curl http://localhost:8080/api/v1/prompts
-
-# 6. 根据标签搜索
-curl "http://localhost:8080/api/v1/prompts?tag_names=风景,高质量"
-
-# 7. 创建新提示词
-curl -X POST http://localhost:8080/api/v1/prompts \
-  -H "Content-Type: application/json" \
-  -d '{"prompt_text":"test prompt","tag_names":["测试"],"is_public":true}'
+go mod download
 ```
 
-## 📋 TODO 列表
+### 6. 运行项目
 
-- [ ] 用户认证系统
-- [ ] 图片自动生成集成
-- [ ] 提示词推荐算法
-- [ ] 批量导入/导出功能
-- [ ] API文档生成
-- [ ] 单元测试
+```bash
+go run main.go
+```
 
-## 🔗 相关资源
+服务将在 `http://localhost:8080` 启动
 
-- [API测试示例](EXAMPLES.md)
-- [数据库结构参考](database_schema.sql)
-- [Go官方文档](https://golang.org/doc/)
-- [Gin框架文档](https://gin-gonic.com/)
-- [GORM文档](https://gorm.io/)
+## V3.1 升级指南
 
-## 📄 许可证
+如果您从V3.0升级到V3.1，数据库结构已更新。请按以下步骤操作：
+
+1. **备份数据库**
+   ```bash
+   mysqldump -u username -p img_prompts > backup_v3.sql
+   ```
+
+2. **执行字段重命名（如果需要）**
+   ```sql
+   -- 如果你的表中仍使用旧字段名，请执行以下SQL
+   ALTER TABLE prompts 
+   CHANGE COLUMN reference_images input_image_url VARCHAR(500) COMMENT '输入的参照图片的存储路径或URL；可能多个图片';
+   
+   ALTER TABLE prompts 
+   CHANGE COLUMN output_image output_image_url VARCHAR(500) COMMENT '输出的参照图片的存储路径或URL';
+   ```
+
+3. **数据格式转换（如果需要）**
+   ```sql
+   -- 如果原来存储的是JSON格式，转换为逗号分隔格式
+   -- 这个步骤需要根据具体数据情况编写转换脚本
+   ```
+
+4. **更新代码**
+   ```bash
+   git pull origin master
+   go mod download
+   ```
+
+5. **重启服务**
+   ```bash
+   go run main.go
+   ```
+
+## 存储格式说明
+
+### 输入图片URL存储
+
+- **数据库格式**：`/uploads/180151.jpg,/uploads/180150.jpg`（逗号分隔字符串）
+- **API响应格式**：`["uploads/180151.jpg", "/uploads/180150.jpg"]`（字符串数组）
+- **最大长度**：500字符
+- **分隔符**：英文逗号（`,`）
+
+### 示例数据
+```sql
+INSERT INTO prompts (
+  prompt_text, 
+  input_image_url, 
+  output_image_url,
+  ...
+) VALUES (
+  'Create a professional e-commerce fashion photo...',
+  '/uploads/180151.jpg,/uploads/180150.jpg',
+  '/uploads/180152.jpg',
+  ...
+);
+```
+
+## AI集成指南
+
+当前版本的AI分析功能使用模拟数据。要集成真实的AI服务，请修改 `services/prompt_service.go` 中的 `AnalyzePromptData` 方法：
+
+```go
+func (s *PromptService) AnalyzePromptData(promptText, modelName, outputImageBase64 string, inputImagesBase64 []string) (*models.AnalyzePromptResponse, error) {
+    // 替换为您的AI API调用
+    // 例如：Google Gemini, OpenAI Vision API等
+}
+```
+
+## 开发指南
+
+### 运行测试
+
+```bash
+go test ./...
+```
+
+### 构建二进制文件
+
+```bash
+go build -o bin/img-prompts main.go
+```
+
+### 代码格式化
+
+```bash
+go fmt ./...
+```
+
+## 贡献指南
+
+欢迎提交Pull Request或Issue！
+
+## 许可证
 
 MIT License
 
----
+## 更新日志
 
-**开始使用**: `go run cmd/db-manager.go -write && go run main.go` 🚀
+### V3.1.0 (2024-09)
+- 🔄 优化数据库字段结构
+- 📝 更新字段命名：`input_image_url` 替代 `reference_images`
+- 💾 优化存储格式：逗号分隔字符串替代JSON
+- 🔄 保持API兼容性
+- 📚 更新文档和示例
+
+### V3.0.0 (2024-01)
+- ✨ 新增多图片上传支持
+- ✨ 新增AI智能生成功能
+- ✨ 向后兼容旧版本
+- 🔥 移除Docker相关文件
+- 🐛 修复已知问题
+- 📝 更新文档
+
+### V2.0.0
+- 初始版本发布
+- 基础CRUD功能
+- 标签系统
+- 搜索功能

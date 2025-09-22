@@ -24,7 +24,7 @@ func NewPromptService() *PromptService {
 	}
 }
 
-// CreatePrompt 创建提示词
+// CreatePrompt 创建提示词（兼容旧版本）
 func (s *PromptService) CreatePrompt(req *models.CreatePromptRequest, imageURL string) (*models.Prompt, error) {
 	// 处理标签
 	tags, err := s.tagService.GetOrCreateTags(req.TagNames)
@@ -36,14 +36,23 @@ func (s *PromptService) CreatePrompt(req *models.CreatePromptRequest, imageURL s
 		PromptText:            req.PromptText,
 		NegativePrompt:        req.NegativePrompt,
 		ModelName:             req.ModelName,
-		ImageURL:              imageURL,
+		OutputImageURL:        req.OutputImageURL,
 		IsPublic:              req.IsPublic,
 		StyleDescription:      req.StyleDescription,
 		UsageScenario:         req.UsageScenario,
 		AtmosphereDescription: req.AtmosphereDescription,
 		ExpressiveIntent:      req.ExpressiveIntent,
-		StructureAnalysis:     req.StructureAnalysis,
-		Tags:                  tags,
+		// --- FIX: Convert string from request to []byte for json.RawMessage ---
+		StructureAnalysis: []byte(req.StructureAnalysis),
+		Tags:              tags,
+	}
+
+	// 设置输入图片URLs
+	prompt.SetInputImageURLs(req.InputImageURLs)
+
+	// 如果没有指定输出图片，使用传入的imageURL作为输出图片
+	if prompt.OutputImageURL == "" {
+		prompt.OutputImageURL = imageURL
 	}
 
 	result := s.db.Create(prompt)
@@ -57,6 +66,109 @@ func (s *PromptService) CreatePrompt(req *models.CreatePromptRequest, imageURL s
 	}
 
 	return prompt, nil
+}
+
+// CreatePromptWithImages 创建提示词（新版本，支持多图片）
+func (s *PromptService) CreatePromptWithImages(req *models.CreatePromptRequest) (*models.Prompt, error) {
+	// 处理标签
+	tags, err := s.tagService.GetOrCreateTags(req.TagNames)
+	if err != nil {
+		return nil, fmt.Errorf("处理标签失败: %v", err)
+	}
+
+	prompt := &models.Prompt{
+		PromptText:            req.PromptText,
+		NegativePrompt:        req.NegativePrompt,
+		ModelName:             req.ModelName,
+		OutputImageURL:        req.OutputImageURL,
+		IsPublic:              req.IsPublic,
+		StyleDescription:      req.StyleDescription,
+		UsageScenario:         req.UsageScenario,
+		AtmosphereDescription: req.AtmosphereDescription,
+		ExpressiveIntent:      req.ExpressiveIntent,
+		// --- FIX: Convert string from request to []byte for json.RawMessage ---
+		StructureAnalysis: []byte(req.StructureAnalysis),
+		Tags:              tags,
+	}
+
+	// 设置输入图片URLs（多个图片以逗号分隔存储）
+	prompt.SetInputImageURLs(req.InputImageURLs)
+
+	result := s.db.Create(prompt)
+	if result.Error != nil {
+		return nil, fmt.Errorf("创建提示词失败: %v", result.Error)
+	}
+
+	// 预加载标签信息
+	if err := s.db.Preload("Tags").First(prompt, prompt.ID).Error; err != nil {
+		return nil, fmt.Errorf("获取创建的提示词失败: %v", err)
+	}
+
+	return prompt, nil
+}
+
+// AnalyzePromptData AI分析图片和提示词，返回建议内容
+func (s *PromptService) AnalyzePromptData(promptText, modelName, outputImageBase64 string, referenceImagesBase64 []string) (*models.AnalyzePromptResponse, error) {
+	// 这里应该调用真实的AI API（如Google Gemini、OpenAI等）
+	// 现在返回模拟数据用于测试
+
+	// 构建AI请求（示例）
+	// aiPrompt := fmt.Sprintf(`
+	// 请分析以下内容并返回JSON格式的建议：
+	// 正向提示词：%s
+	// 模型名称：%s
+	// 输出图片：[Base64数据]
+	// 参考图片数量：%d
+	//
+	// 请返回以下JSON格式的内容：
+	// {
+	//   "negative_prompt": "负面提示词",
+	//   "style_description": "风格描述",
+	//   "usage_scenario": "适用场景",
+	//   "atmosphere_description": "氛围描述",
+	//   "expressive_intent": "表现意图",
+	//   "structure_analysis": "结构分析JSON",
+	//   "tag_names": ["标签1", "标签2"]
+	// }
+	// `, promptText, modelName, len(referenceImagesBase64))
+
+	// TODO: 实际调用AI API
+	// response := callAIAPI(aiPrompt, outputImageBase64, referenceImagesBase64)
+
+	// 返回模拟数据
+	mockResponse := &models.AnalyzePromptResponse{
+		NegativePrompt:        "ugly, blurry, low quality, watermark, text, distorted, deformed, bad anatomy",
+		StyleDescription:      "数字艺术插画风格，色彩鲜艳，高对比度，富有想象力，细节丰富。",
+		UsageScenario:         "适用于社交媒体帖子、博客文章配图、个人艺术项目、数字艺术展示。",
+		AtmosphereDescription: "梦幻、超现实、充满活力的氛围，带有神秘和魔幻的色彩。",
+		ExpressiveIntent:      "旨在通过超现实主义的视觉效果，激发观众的想象力和好奇心，传达一种奇幻的美感。",
+		StructureAnalysis:     `{"主体":"根据提示词生成的核心元素","背景":"环境和场景描述","光照":"光源和光影效果","构图":"画面布局和元素排列","色彩":"主要色调和色彩搭配"}`,
+		TagNames: []string{
+			"数字艺术",
+			"插画",
+			"超现实主义",
+			"鲜艳色彩",
+			"奇幻",
+			"创意设计",
+		},
+	}
+
+	// 根据实际的提示词内容调整模拟数据
+	if strings.Contains(strings.ToLower(promptText), "portrait") || strings.Contains(strings.ToLower(promptText), "人物") {
+		mockResponse.TagNames = append(mockResponse.TagNames, "人物", "肖像")
+		mockResponse.StyleDescription = "写实或半写实的人物肖像风格，注重细节表现和情感传达。"
+	}
+
+	if strings.Contains(strings.ToLower(promptText), "landscape") || strings.Contains(strings.ToLower(promptText), "风景") {
+		mockResponse.TagNames = append(mockResponse.TagNames, "风景", "自然")
+		mockResponse.StyleDescription = "自然风景画风格，强调大自然的美丽和壮观。"
+	}
+
+	if modelName != "" {
+		mockResponse.TagNames = append(mockResponse.TagNames, modelName)
+	}
+
+	return mockResponse, nil
 }
 
 // GetPromptByID 根据ID获取提示词
@@ -107,7 +219,17 @@ func (s *PromptService) UpdatePrompt(id uint, req *models.UpdatePromptRequest) (
 		updates["expressive_intent"] = *req.ExpressiveIntent
 	}
 	if req.StructureAnalysis != nil {
-		updates["structure_analysis"] = *req.StructureAnalysis
+		// --- FIX: Convert string pointer from request to []byte for json.RawMessage ---
+		updates["structure_analysis"] = []byte(*req.StructureAnalysis)
+	}
+	if req.OutputImageURL != nil {
+		updates["output_image_url"] = *req.OutputImageURL
+	}
+	if len(req.InputImageURLs) > 0 {
+		// 创建一个临时Prompt对象来使用SetInputImageURLs方法
+		tempPrompt := &models.Prompt{}
+		tempPrompt.SetInputImageURLs(req.InputImageURLs)
+		updates["input_image_url"] = tempPrompt.InputImageURL
 	}
 
 	if len(updates) > 0 {
@@ -118,7 +240,7 @@ func (s *PromptService) UpdatePrompt(id uint, req *models.UpdatePromptRequest) (
 	}
 
 	// 处理标签更新
-	if req.TagNames != nil {
+	if req.TagNames != nil && len(req.TagNames) > 0 {
 		tags, err := s.tagService.GetOrCreateTags(req.TagNames)
 		if err != nil {
 			return nil, fmt.Errorf("处理标签失败: %v", err)
@@ -127,6 +249,11 @@ func (s *PromptService) UpdatePrompt(id uint, req *models.UpdatePromptRequest) (
 		// 替换关联的标签
 		if err := s.db.Model(prompt).Association("Tags").Replace(tags); err != nil {
 			return nil, fmt.Errorf("更新标签关联失败: %v", err)
+		}
+	} else if req.TagNames != nil && len(req.TagNames) == 0 {
+		// 如果传入空数组，清除所有标签
+		if err := s.db.Model(prompt).Association("Tags").Clear(); err != nil {
+			return nil, fmt.Errorf("清除标签关联失败: %v", err)
 		}
 	}
 

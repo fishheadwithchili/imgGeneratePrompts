@@ -5,6 +5,7 @@ import (
 	"imgGeneratePrompts/services"
 	"imgGeneratePrompts/utils"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,9 +26,19 @@ func NewTagController() *TagController {
 func (tc *TagController) CreateTag(c *gin.Context) {
 	var req models.CreateTagRequest
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, err)
-		return
+	// 检查Content-Type并正确绑定数据
+	contentType := c.GetHeader("Content-Type")
+	if strings.Contains(contentType, "application/json") {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.ValidationErrorResponse(c, err)
+			return
+		}
+	} else {
+		// 尝试绑定表单数据
+		if err := c.ShouldBind(&req); err != nil {
+			utils.ValidationErrorResponse(c, err)
+			return
+		}
 	}
 
 	tag, err := tc.tagService.CreateTag(&req)

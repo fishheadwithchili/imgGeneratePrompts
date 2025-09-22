@@ -66,24 +66,25 @@ func IsValidImageType(filename string) bool {
 // GenerateUniqueFilename 生成唯一的文件名
 func GenerateUniqueFilename(originalFilename string) string {
 	ext := filepath.Ext(originalFilename)
-	nameWithoutExt := strings.TrimSuffix(originalFilename, ext)
-
 	// 清理文件名，移除特殊字符
+	nameWithoutExt := strings.TrimSuffix(originalFilename, ext)
+	// A simple sanitizer
 	nameWithoutExt = strings.ReplaceAll(nameWithoutExt, " ", "_")
-	nameWithoutExt = strings.ReplaceAll(nameWithoutExt, "(", "")
-	nameWithoutExt = strings.ReplaceAll(nameWithoutExt, ")", "")
+	nameWithoutExt = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+			return r
+		}
+		return -1
+	}, nameWithoutExt)
 
 	timestamp := time.Now().Unix()
 	return fmt.Sprintf("%s_%d%s", nameWithoutExt, timestamp, ext)
 }
 
-// GetFileURL 获取文件的访问URL
+// GetFileURL 获取文件的相对访问URL
+// FIX: 始终返回相对路径以提高可移植性，而不是包含host的完整URL
 func GetFileURL(c *gin.Context, filename string) string {
-	scheme := "http"
-	if c.Request.TLS != nil {
-		scheme = "https"
-	}
-	return fmt.Sprintf("%s://%s/uploads/%s", scheme, c.Request.Host, filename)
+	return fmt.Sprintf("/uploads/%s", filename)
 }
 
 // DeleteFile 删除文件

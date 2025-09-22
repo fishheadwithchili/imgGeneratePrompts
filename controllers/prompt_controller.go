@@ -1,11 +1,14 @@
 package controllers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"imgGeneratePrompts/config"
 	"imgGeneratePrompts/models"
 	"imgGeneratePrompts/services"
 	"imgGeneratePrompts/utils"
-	"path/filepath"
+	"io/ioutil"
+	"log"
 	"strconv"
 	"strings"
 
@@ -28,10 +31,27 @@ func NewPromptController() *PromptController {
 func (pc *PromptController) CreatePrompt(c *gin.Context) {
 	var req models.CreatePromptRequest
 
-	// 绑定JSON数据
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, err)
-		return
+	// 检查Content-Type并正确绑定数据
+	contentType := c.GetHeader("Content-Type")
+	if strings.Contains(contentType, "application/json") {
+		// 绑定JSON数据
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.ValidationErrorResponse(c, err)
+			return
+		}
+	} else {
+		// 尝试绑定表单数据
+		if err := c.ShouldBind(&req); err != nil {
+			utils.ValidationErrorResponse(c, err)
+			return
+		}
+		// 处理表单中的tag_names字符串
+		if tagNamesStr := c.PostForm("tag_names"); tagNamesStr != "" {
+			req.TagNames = strings.Split(tagNamesStr, ",")
+			for i := range req.TagNames {
+				req.TagNames[i] = strings.TrimSpace(req.TagNames[i])
+			}
+		}
 	}
 
 	// TODO: 这里应该处理图片生成逻辑
@@ -48,8 +68,9 @@ func (pc *PromptController) CreatePrompt(c *gin.Context) {
 	utils.SuccessWithMessage(c, "创建成功", prompt.ToResponse())
 }
 
-// UploadAndCreatePrompt 上传图片并创建提示词
+// UploadAndCreatePrompt 上传图片并创建提示词（支持多图片）
 func (pc *PromptController) UploadAndCreatePrompt(c *gin.Context) {
+	log.Println("--- DEBUG: [UploadAndCreatePrompt] Received a request to create prompt with image. ---")
 	// 解析表单数据
 	var req models.CreatePromptRequest
 
@@ -67,39 +88,203 @@ func (pc *PromptController) UploadAndCreatePrompt(c *gin.Context) {
 		}
 	}
 
-	// 处理文件上传
-	file, err := c.FormFile("image")
+	// --- DEBUG: 检查收到的 multipart form ---
+	form, err := c.MultipartForm()
 	if err != nil {
-		utils.BadRequestResponse(c, "图片上传失败: "+err.Error())
-		return
+		log.Printf("--- DEBUG: Error parsing multipart form: %v ---", err)
 	}
 
-	// 检查文件大小
-	if file.Size > config.AppConfig.Server.MaxFileSize {
-		utils.BadRequestResponse(c, "文件大小超出限制")
-		return
+	if form != nil && form.File != nil {
+		log.Printf("--- DEBUG: Received multipart form with %d file fields.", len(form.File))
+		for key, files := range form.File {
+			log.Printf("--- DEBUG:   - Received field key: '%s' with %d file(s).", key, len(files))
+			for i, fileHeader := range files {
+				log.Printf("--- DEBUG:     - File #%d: Name='%s', Size=%d bytes", i+1, fileHeader.Filename, fileHeader.Size)
+			}
+		}
+	} else {
+		log.Println("--- DEBUG: No files received in multipart form. ---")
+	}
+	// --- END DEBUG ---
+
+	// 处理图片上传（支持多个输入图片）
+	if err == nil && form != nil {
+		inputImageURLs := []string{}
+
+		// 处理输入参考图片（支持多个）
+		if files, ok := form.File["input_images"]; ok {
+			log.Printf("--- DEBUG: Found '%d' files under the key 'input_images'. Processing them now.", len(files))
+			for _, file := range files {
+				if file.Size > config.AppConfig.Server.MaxFileSize {
+					utils.BadRequestResponse(c, "文件大小超出限制: "+file.Filename)
+					return
+				}
+				filename, err := utils.SaveUploadedFile(file, config.AppConfig.Server.UploadPath)
+				if err != nil {
+					utils.InternalServerErrorResponse(c, err.Error())
+					return
+				}
+				imageURL := utils.GetFileURL(c, filename)
+				inputImageURLs = append(inputImageURLs, imageURL)
+			}
+		}
+
+		// 兼容旧版本：处理reference_images字段
+		if files, ok := form.File["reference_images"]; ok {
+			log.Printf("--- DEBUG: Found '%d' files under the legacy key 'reference_images'.", len(files))
+			for _, file := range files {
+				filename, err := utils.SaveUploadedFile(file, config.AppConfig.Server.UploadPath)
+				if err != nil {
+					utils.InternalServerErrorResponse(c, err.Error())
+					return
+				}
+				imageURL := utils.GetFileURL(c, filename)
+				inputImageURLs = append(inputImageURLs, imageURL)
+			}
+		}
+		req.InputImageURLs = inputImageURLs
+
+		// 处理输出图片（单个）
+		if files, ok := form.File["output_image"]; ok && len(files) > 0 {
+			file := files[0] // 只取第一个
+			log.Printf("--- DEBUG: Found file under the key 'output_image': %s", file.Filename)
+			if file.Size > config.AppConfig.Server.MaxFileSize {
+				utils.BadRequestResponse(c, "输出图片文件大小超出限制")
+				return
+			}
+			filename, err := utils.SaveUploadedFile(file, config.AppConfig.Server.UploadPath)
+			if err != nil {
+				utils.InternalServerErrorResponse(c, err.Error())
+				return
+			}
+			req.OutputImageURL = utils.GetFileURL(c, filename)
+		}
+
+		// 兼容旧版本的单个image字段
+		if files, ok := form.File["image"]; ok && len(files) > 0 {
+			log.Printf("--- DEBUG: Found file under the legacy key 'image'.")
+			file := files[0]
+			if req.OutputImageURL == "" {
+				filename, err := utils.SaveUploadedFile(file, config.AppConfig.Server.UploadPath)
+				if err != nil {
+					utils.InternalServerErrorResponse(c, err.Error())
+					return
+				}
+				req.OutputImageURL = utils.GetFileURL(c, filename)
+			}
+		}
 	}
 
-	// 保存文件
-	filename, err := utils.SaveUploadedFile(file, config.AppConfig.Server.UploadPath)
-	if err != nil {
-		utils.InternalServerErrorResponse(c, err.Error())
-		return
-	}
-
-	// 生成图片URL
-	imageURL := utils.GetFileURL(c, filename)
-
+	log.Printf("--- DEBUG: Request object before saving to DB: %+v", req)
 	// 创建提示词
-	prompt, err := pc.promptService.CreatePrompt(&req, imageURL)
+	prompt, err := pc.promptService.CreatePromptWithImages(&req)
 	if err != nil {
-		// 如果创建失败，删除已上传的文件
-		utils.DeleteFile(filepath.Join(config.AppConfig.Server.UploadPath, filename))
 		utils.InternalServerErrorResponse(c, err.Error())
 		return
 	}
 
 	utils.SuccessWithMessage(c, "创建成功", prompt.ToResponse())
+}
+
+// AnalyzePrompt 智能生成接口 - 分析图片并返回建议内容
+func (pc *PromptController) AnalyzePrompt(c *gin.Context) {
+	var req models.AnalyzePromptRequest
+
+	// 绑定表单数据
+	if err := c.ShouldBind(&req); err != nil {
+		utils.ValidationErrorResponse(c, err)
+		return
+	}
+
+	// 准备图片Base64编码
+	var outputImageBase64 string
+	var inputImageBase64 []string
+
+	// 获取表单
+	form, err := c.MultipartForm()
+	if err != nil {
+		utils.BadRequestResponse(c, "请提供图片文件")
+		return
+	}
+
+	// 处理输出图片（必需）
+	if files, ok := form.File["output_image"]; ok && len(files) > 0 {
+		file := files[0]
+
+		// 打开文件
+		src, err := file.Open()
+		if err != nil {
+			utils.InternalServerErrorResponse(c, "无法读取输出图片")
+			return
+		}
+		defer src.Close()
+
+		// 读取文件内容
+		data, err := ioutil.ReadAll(src)
+		if err != nil {
+			utils.InternalServerErrorResponse(c, "无法读取输出图片内容")
+			return
+		}
+
+		// 转换为Base64
+		outputImageBase64 = base64.StdEncoding.EncodeToString(data)
+	} else {
+		utils.BadRequestResponse(c, "请提供输出图片")
+		return
+	}
+
+	// 处理输入参考图片（可选）
+	if files, ok := form.File["input_images"]; ok {
+		for _, file := range files {
+			// 打开文件
+			src, err := file.Open()
+			if err != nil {
+				continue
+			}
+			defer src.Close()
+
+			// 读取文件内容
+			data, err := ioutil.ReadAll(src)
+			if err != nil {
+				continue
+			}
+
+			// 转换为Base64
+			base64Str := base64.StdEncoding.EncodeToString(data)
+			inputImageBase64 = append(inputImageBase64, base64Str)
+		}
+	}
+
+	// 兼容旧版本：处理reference_images字段
+	if files, ok := form.File["reference_images"]; ok {
+		for _, file := range files {
+			// 打开文件
+			src, err := file.Open()
+			if err != nil {
+				continue
+			}
+			defer src.Close()
+
+			// 读取文件内容
+			data, err := ioutil.ReadAll(src)
+			if err != nil {
+				continue
+			}
+
+			// 转换为Base64
+			base64Str := base64.StdEncoding.EncodeToString(data)
+			inputImageBase64 = append(inputImageBase64, base64Str)
+		}
+	}
+
+	// 调用服务层进行AI分析
+	response, err := pc.promptService.AnalyzePromptData(req.PromptText, req.ModelName, outputImageBase64, inputImageBase64)
+	if err != nil {
+		utils.InternalServerErrorResponse(c, err.Error())
+		return
+	}
+
+	utils.SuccessWithMessage(c, "分析成功", response)
 }
 
 // GetPrompt 获取单个提示词
@@ -130,9 +315,25 @@ func (pc *PromptController) UpdatePrompt(c *gin.Context) {
 	}
 
 	var req models.UpdatePromptRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ValidationErrorResponse(c, err)
-		return
+	contentType := c.GetHeader("Content-Type")
+	if strings.Contains(contentType, "application/json") {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.ValidationErrorResponse(c, err)
+			return
+		}
+	} else {
+		if err := c.ShouldBind(&req); err != nil {
+			utils.ValidationErrorResponse(c, err)
+			return
+		}
+		// 处理表单中的tag_names字符串
+		if tagNamesStr := c.PostForm("tag_names"); tagNamesStr != "" {
+			tags := strings.Split(tagNamesStr, ",")
+			for i := range tags {
+				tags[i] = strings.TrimSpace(tags[i])
+			}
+			req.TagNames = tags
+		}
 	}
 
 	prompt, err := pc.promptService.UpdatePrompt(uint(id), &req)
@@ -193,11 +394,28 @@ func (pc *PromptController) GetPrompts(c *gin.Context) {
 		return
 	}
 
-	// 转换为响应格式
+	// --- DEBUG: Enhanced Logging ---
+	log.Printf("准备转换 %d 条提示词为响应格式...", len(prompts))
 	responses := make([]models.PromptResponse, len(prompts))
 	for i, prompt := range prompts {
-		responses[i] = prompt.ToResponse()
+		responseObj := prompt.ToResponse()
+
+		// 尝试序列化每个对象，并打印结果
+		jsonBytes, jsonErr := json.Marshal(responseObj)
+		if jsonErr != nil {
+			log.Printf("!!!!!!!!!!!! 错误：序列化提示词 ID %d 时失败: %v", prompt.ID, jsonErr)
+			// 打印出有问题的对象结构，帮助调试
+			log.Printf("有问题的对象数据: %+v", responseObj)
+			utils.InternalServerErrorResponse(c, "服务器在处理数据时遇到问题")
+			return
+		}
+
+		// 打印序列化后的 JSON 字符串
+		log.Printf("--- 序列化 ID %d 结果: %s", prompt.ID, string(jsonBytes))
+
+		responses[i] = responseObj
 	}
+	log.Println("--- DEBUG: 所有提示词转换完成 ---")
 
 	utils.PaginationResponse(c, responses, query.Page, query.PageSize, total)
 }
